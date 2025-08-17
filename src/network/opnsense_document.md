@@ -10,17 +10,26 @@ Intel dual NIC 1350-GE-2T PCIe x4(Amazon $33)
 TP-Link TL-SG108E 8 Port 1 GB managed switch (Amazon $24)
 TP-Link Archer A7 (old donated item)
 
-**Total** with tax but not including Archer A7 = **$121**
+I was iniitially looking at some firewall appliances on Aliexpress and mini PCs on ebay, but believe it or not, this optiplex SFF came it way cheaper than any of those options. It's also a lot easier to upgrade this form factor as well. I haven't measured the power draw to see a break even point though.
+
+Future upgrades:
+ - upgrade dual NIC to 2.5/10Gbe or replace optiplex with mini PC/Appliance
+ - replace switch with a 2.5/10Gbe
+ - get a new access point
+
+
+**Total** with tax but not including Archer A7 = **$121**. I had the archer from years ago.
 
 ## 📊 Network Overview
 
-I will be setting up a few VLANs to separate my internal network.
+I will be setting up a few VLANs to separate my internal network. Diagram below is subject to change but you get the idea.
 
 | VLAN Name | VLAN ID | Subnet       | Purpose                       | Access             |
 | --------- | ------- | ------------ | ----------------------------- | ------------------ |
-| Main      | 10      | 10.0.0.1/24  | Network devices,proxmox, etc. | internet, all VLAN |
-| Guest     | 20      | 10.0.20.1/24 | Guest                         | internet only      |
-| Services  | 30      | 10.0.30.1/24 | server/services, NAS/media    | internet           |
+| Main      | 10      | 10.0.x.1/24  | Network devices,proxmox, etc. | internet, all VLAN |
+| Guest     | 20      | 10.0.x.1/24  | Guest                         | internet only      |
+| Media     | 30      | 10.0.x.1/24  | Nas/Media                     | internet           |
+| Services  | 40      | 10.0.x.1/24  | server/services               | internet           |
 
 I will be exposing some ports on services using traefik(TBD)
 
@@ -46,7 +55,7 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
    |--------|-------|
    |Hostname| x.home (your choice)|
    |Domain| x.lan (your choice)|
-   |DNS server options | check "Allow DNS server list to be overridden by DCHP/PPP on WAN"|
+   |DNS server options | check "Allow DNS server list to be overridden by DCHP/PPP on WAN" (might change this with adguard home)|
    |primary DNS| blank|
    |secondary DNS| blank|
 
@@ -79,6 +88,7 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
 ---
 
 ### 3. **Bridge ISP Modem**
+ - You will need to google around for your ISP. The information below may help someone with a verizon fios box. For me I was able to just go from the wall to opnsense. This was a great advantage for me as I could just unplug when something went wrong.
 
 1. Plug laptop into ISP modem.
 2. Access web UI (`192.168.0.1` or `192.168.100.1` or check values on the router).
@@ -98,8 +108,8 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
 ### 4. **Connect WAN and Verify LAN**
 
 1. Connect ISP modem to OPNsense **WAN port**.
-2. Connect LAN port to laptop and verify you can `opnsense` .
-3. Confirm internet access through bridged modem.
+2. Connect LAN port to laptop and verify you can reach `opnsense` .
+3. Confirm internet access through bridged modem, or in my case just from the wall
 4. Update Opnsense: System -> Firmware
 
 ---
@@ -107,7 +117,7 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
 ### 5. **Configure VLANs in OPNsense**
 
 1. Go to **Interfaces > Other Types > VLANs**.
-2. Create VLANs: 10, 20, 30, 40 with LAN NIC as parent.
+2. Create VLANs: 10, 20, 30, 40 with LAN NIC as parent. My LAN is `eth01`. It just happened to be the one I was connected to.
    |Options | value |
    |--------|-------|
    |Device| leave blank|
@@ -116,18 +126,18 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
    |Periodic Netflow| 24 hours|
    |Power mode| Hiadaptive|
 3. Go to **Interfaces > Assignments**, assign each VLAN.
-4. Enable each, set static IPs: use this example
+4. Enable each, set static IPs: use this example. Again this depense on what you choose for your IP ranges.
 
-   - VLAN 10: 10.0.10.1/24
-   - VLAN 20: 10.0.20.1/24
-   - VLAN 30: 10.0.30.1/24
-   - VLAN 40: 10.0.40.1/24
+   - VLAN 10: 10.0.x.1/24
+   - VLAN 20: 10.0.x.1/24
+   - VLAN 30: 10.0.x.1/24
+   - VLAN 40: 10.0.x.1/24
 
 ---
 
 ### 5. **Configure DHCP and Firewall Rules in OPNsense**
 
-- **Add `PrivateNetworks` Alias. this will include RCF 1918 networks `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`**
+- **Add `PrivateNetworks` Alias. this will include RCF 1918 networks `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`**. This was one of the ideas I picked up from the link above. I created a few to group some IPs/machines.
 - **Services > [LAN]**
 
 ### 5.1 LAN
@@ -156,44 +166,30 @@ Go through the Wizard. Change opnsense LAN IP to another range or leave it with 
 | 1    | 10-40 | Tagged   | Trunk to OPNsense |
 | 2    | 10    | Untagged | Main              |
 | 3    | 20    | Untagged | Guest             |
-| 4    | 30    | Untagged | Services          |
+| 4    | 30    | Untagged | Media             |
+| 5    | 40    | Untagged | Services          |
 
+Your switch might be different but the key here is you want the LAN and Access points ports to be tagged, while the VLAN ports are untagged
 ---
 
 ### 7. **Set Up OpenWRT Archer A7 (Trunk + SSIDs)**
 
-1. Flash OpenWRT, access via LAN cable.
+1. Flash OpenWRT, access via LAN cable. I simply downloaded the latest firmware from the open wrt site for my Archer A7 and flashed the firmware.
 2. Go to **Network > Switch**:
 
-   - Create VLANs 10, 20, 30, 40 with CPU port tagged.
-
+   - Create VLANs 10, 20, 30, 40 with CPU/LAN port tagged. The VLAN port should be untagged.
+3. Go to **Network > Devices**, create VLANs 10, 20, etc., as brigde devices. Do not apply yet.
+   - brige port values:   `eth0.10` for VLAN 10, `eth0.20` for VLAN 20, etc.
 3. Go to **Network > Interfaces**, create interfaces:
+   - Create VLANs with any name but it would name sense to call them VLAN20, VLAN20, etc.
+   - protocol: DHCP client
+   - device: the bridge devices we just created
+  
 
-   - `eth0.10`, `eth0.20`, `eth0.30`, `eth0.40`
 
 4. Go to **Wireless**, create SSIDs:
-
-   - `Main` → Interface: `eth0.10`
-   - `Guest` → Interface: `eth0.20`
-
----
-
-### 8. **Firewall Hardening Summary**
-
-- OPNsense admin UI - 10.0.10.1
-- Switch UI (10.0.10.2)
-- OpenWRT UI (10.0.10.3)
-
-- **Block all other VLANs from 10.0.0.0/24**
+ - this is one straight forward. Select the radio you want (dual 2.4/5g or just 2.4) but clicking add. You may want to delete the other SSIDs.
+ - just be sure to select your interface and add password.
+   
 
 ---
-
-## 📆 Final Notes
-
-- Consider Suricata or Zenarmor for traffic inspection
-- Backup your configs on OPNsense, Switch, and OpenWRT after setup
-- Ad guard home
-
----
-
-**End of Guide**
